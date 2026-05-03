@@ -122,7 +122,57 @@ def extract_answers(request):
            choice_id = int(value)
            submitted_anwsers.append(choice_id)
    return submitted_anwsers
+from .models import Choice, Submission
 
+
+def submit(request, course_id):
+    course = get_object_or_404(Course, pk=course_id)
+    user = request.user
+    enrollment = Enrollment.objects.get(user=user, course=course)
+
+    # create submission
+    submission = Submission.objects.create(enrollment=enrollment)
+
+    # get selected choices
+    choices = request.POST.getlist('choices')
+
+    for choice_id in choices:
+        choice = Choice.objects.get(pk=int(choice_id))
+        submission.choices.add(choice)
+
+    return redirect(reverse('onlinecourse:show_exam_result',
+                            args=(course_id, submission.id)))
+
+
+def show_exam_result(request, course_id, submission_id):
+    course = get_object_or_404(Course, pk=course_id)
+    submission = get_object_or_404(Submission, pk=submission_id)
+
+    total_score = 0
+    score = 0
+    questions = []
+
+    for lesson in course.lesson_set.all():
+        for question in lesson.question_set.all():
+            questions.append(question)
+            total_score += question.grade
+
+            selected_choices = submission.choices.filter(question=question)
+            selected_ids = selected_choices.values_list('id', flat=True)
+
+            if question.is_get_score(selected_ids):
+                score += question.grade
+
+    context = {
+        'course': course,
+        'submission': submission,
+        'questions': questions,
+        'score': score,
+        'total_score': total_score,
+        'pass': score >= total_score / 2
+    }
+
+    return render(request, 'onlinecourse/exam_result.html', context)
 
 # <HINT> Create an exam result view to check if learner passed exam and show their question results and result for each question,
 # you may implement it based on the following logic:
